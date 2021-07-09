@@ -1,0 +1,104 @@
+​								Spring
+##1.Spring中用到了哪些DP
+1. **工厂模式3**
+Spring通过扫描配置文件或者类路径下的注解，结合工厂模式和反射来创建目标类的实例供我们使用。在Spring中，最顶层的工厂接口为BeanFactory。
+2. **单例模式**
+单例模式可以保证在程序运行期间一个类只有一个对应的实例。
+Spring中bean的作用域默认就是单例的。除了单例外，还有以下这些作用域：
+- prototype：每次请求都会创建一个新的bean。
+- request：每一个http请求都会创建一个新的bean，该bean只在当前http request有效。
+- session：每一次http请求都会创建一个新的bean，该bean只在当前的http session有效。？这两个意思bean的生命周期只在一个request或session内吗？
+- global-session：全局session作用域，在spring5中已经被废弃。
+spring中设置bean的作用域：
+```java
+使用xml：<bean id="classFullName" scope="scopeName"/>
+使用@Bean或@Component：@Scope("scopeName")
+```
+使用单例模式的好处：
+- 对于频繁使用的对象，可以省去创建对象的时间。对于重量级的对象，这是一笔可观的开销。
+- 不用频繁创建对象，new的次数少了，系统内存更加平稳，内存使用率降低，减少GC次数，减少GC压力。
+3. **代理模式**
+
+Spring中AOP的实现使用了代理模式。
+Spring AOP中使用的动态代理底层有两种实现方式：
+- 如果存在接口，那就使用JDK动态代理。
+
+- 如果不存在接口，那就使用CGLib的方式生成被代理类的子类作为代理对象。
+
+  ![SpringAOPProcess](https://camo.githubusercontent.com/2948f9b2b5c45eb208990afcac1bf5638783dc3ebc834d3d7d2d4f7cc050981c/68747470733a2f2f6d792d626c6f672d746f2d7573652e6f73732d636e2d6265696a696e672e616c6979756e63732e636f6d2f323031392d362f537072696e67414f5050726f636573732e6a7067) 
+
+
+4. 模板模式
+模板模式在父类定义了一个算法框架，固定了算法步骤，将其中一些具体不同实现的步骤交给子类。Spring中的编程式事务管理使用到了模板模式
+```java
+ TransactionTemplate transactionTemplate = TransactionTemplateUtils.getDefaultTransactionTemplate(txManager);
+        transactionTemplate.execute(new TransactionCallbackWithoutResult(){
+            @Override
+            protected void doInTransactionWithoutResult(TransactionStatus arg0) {
+         //do something 
+            }
+        });
+```
+在SpringMVC中的请求处理
+```java
+//在FrameworkServlet中
+protected final void processRequest(HttpServletRequest request, HttpServletResponse response)
+			throws ServletException, IOException {
+
+		long startTime = System.currentTimeMillis();
+		Throwable failureCause = null;
+
+		LocaleContext previousLocaleContext = LocaleContextHolder.getLocaleContext();
+		LocaleContext localeContext = buildLocaleContext(request);
+
+		RequestAttributes previousAttributes = RequestContextHolder.getRequestAttributes();
+		ServletRequestAttributes requestAttributes = buildRequestAttributes(request, response, previousAttributes);
+
+		WebAsyncManager asyncManager = WebAsyncUtils.getAsyncManager(request);
+		asyncManager.registerCallableInterceptor(FrameworkServlet.class.getName(), new RequestBindingInterceptor());
+
+		initContextHolders(request, localeContext, requestAttributes);
+
+		try {
+		//doService是抽象方法，没有具体实现逻辑，具体实现逻辑交给了DispatcherServlet子类实现
+			doService(request, response);
+		}
+		catch (ServletException | IOException ex) {
+			failureCause = ex;
+			throw ex;
+		}
+		catch (Throwable ex) {
+			failureCause = ex;
+			throw new NestedServletException("Request processing failed", ex);
+		}
+
+		finally {
+			resetContextHolders(request, previousLocaleContext, previousAttributes);
+			if (requestAttributes != null) {
+				requestAttributes.requestCompleted();
+			}
+			logResult(request, response, failureCause, asyncManager);
+			publishRequestHandledEvent(request, response, startTime, failureCause);
+		}
+	}
+```
+5. **适配器模式**
+在SpringMVC中通过HandlerMapping找到请求对应的handler后会通过HandlerAdapter调用目标handler。HandlerAdapter是客户端DispatchServlet期望的接口，被适配的接口是handler，不同handler的适配交给具体的handlerAdapter实现
+**为什么在SpringMVC中要使用适配器模式？**SpringMVC中有多中Controller类型，如基于BeanName，基于方法（RequestMapping）的等等。如果不利用适配器模式，在DispatcherServlet中直接获取handler，再判断其类型的话，代码就会有很多if else判断：
+```java
+if(mappedHandler.getHandler() instanceof MultiActionController){  
+   ((MultiActionController)mappedHandler.getHandler()).xxx  
+}else if(mappedHandler.getHandler() instanceof XXX){  
+    ...  
+}else if(...){  
+   ...  
+}  
+```
+假如再增加一个handler类型就需要在上面代码再假如一行判断，这样就使得代码难以维护，也违反了设计模式中的对扩展开放，对修改关闭。
+##总结##
+**Spring中用到了哪些设计模式？**
+- 工厂设计模式：使用工厂BeanFactory来创建bean。
+- 代理设计模式：Spring AOP使用到了动态代理。
+- 单例设计模式：Spring中bean默认是单例。
+- 模板方式模式：以template结尾的基本用到了模板方法模式，如JdbcTemplate，TransactionTemplate。编程式事务用到了模板方法。
+- 适配器模式：SpringMVC中的HandlerAdapter使用到了适配器模式，将不同的类型handler交给不同的适配器调用，最后统一返回一个ModelAndView。
